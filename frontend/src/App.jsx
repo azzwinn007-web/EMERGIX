@@ -163,14 +163,6 @@ function App() {
 
             <h2>
               {page === "dashboard" &&
-                portal === "patient" &&
-                `Good to have you here${
-                  currentUser?.name
-                    ? `, ${currentUser.name}`
-                    : ""
-                }.`}
-
-              {page === "dashboard" &&
                 portal === "hospital" &&
                 "Hospital Command Center"}
 
