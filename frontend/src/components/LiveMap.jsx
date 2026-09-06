@@ -10,94 +10,32 @@ import {
 
 import "leaflet/dist/leaflet.css";
 
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-// =====================================================
-// HOSPITAL DATA
-// These coordinates come from your existing emergix.db
-// =====================================================
-
-const hospitals = [
-  {
-    id: 1,
-    name: "Apollo Hospitals",
-    area: "Greams Road, Thousand Lights",
-    lat: 13.0603,
-    lon: 80.2512,
-    icu: 12,
-    emergencyBeds: 28,
-    ventilators: 8,
-    ambulances: 5,
-    wait: 4,
-    status: "Accepting All Patients",
-  },
-
-  {
-    id: 2,
-    name: "Rajiv Gandhi Govt General Hospital",
-    area: "Park Town, Central",
-    lat: 13.0817,
-    lon: 80.2782,
-    icu: 4,
-    emergencyBeds: 15,
-    ventilators: 5,
-    ambulances: 8,
-    wait: 12,
-    status: "Critical Only",
-  },
-
-  {
-    id: 3,
-    name: "MIOT International",
-    area: "Manapakkam",
-    lat: 13.0232,
-    lon: 80.1873,
-    icu: 15,
-    emergencyBeds: 32,
-    ventilators: 10,
-    ambulances: 6,
-    wait: 5,
-    status: "Accepting All Patients",
-  },
-
-  {
-    id: 4,
-    name: "Fortis Malar Hospital",
-    area: "Adyar",
-    lat: 13.0067,
-    lon: 80.257,
-    icu: 6,
-    emergencyBeds: 10,
-    ventilators: 4,
-    ambulances: 3,
-    wait: 8,
-    status: "Accepting All Patients",
-  },
-
-  {
-    id: 5,
-    name: "Kauvery Hospital",
-    area: "Alwarpet",
-    lat: 13.0336,
-    lon: 80.2505,
-    icu: 9,
-    emergencyBeds: 18,
-    ventilators: 6,
-    ambulances: 4,
-    wait: 6,
-    status: "Accepting All Patients",
-  },
-];
+const CHENNAI_FALLBACK = {
+  lat: 13.0827,
+  lon: 80.2707,
+};
 
 
 // =====================================================
-// DISTANCE CALCULATION
+// DISTANCE
 // =====================================================
 
-function calculateDistance(lat1, lon1, lat2, lon2) {
+function calculateDistance(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+) {
   const R = 6371;
 
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const dLat =
+    ((lat2 - lat1) * Math.PI) / 180;
+
+  const dLon =
+    ((lon2 - lon1) * Math.PI) / 180;
 
   const a =
     Math.sin(dLat / 2) ** 2 +
@@ -106,7 +44,11 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2) ** 2;
 
   const c =
-    2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    );
 
   return R * c;
 }
@@ -114,7 +56,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 // =====================================================
 // MAP CONTROLLER
-// Automatically fits map to user + hospitals
 // =====================================================
 
 function MapController({ points }) {
@@ -129,7 +70,8 @@ function MapController({ points }) {
     ]);
 
     map.fitBounds(bounds, {
-      padding: [40, 40],
+      padding: [45, 45],
+      maxZoom: 13,
     });
   }, [map, points]);
 
@@ -138,50 +80,106 @@ function MapController({ points }) {
 
 
 // =====================================================
-// LIVE MAP COMPONENT
+// LIVE MAP
 // =====================================================
 
 function LiveMap() {
-
-  const [userLocation, setUserLocation] = useState(null);
+  const [userLocation, setUserLocation] =
+    useState(null);
 
   const [locationStatus, setLocationStatus] =
     useState("Detecting your location...");
 
-  const [routes, setRoutes] = useState({});
+  const [hospitals, setHospitals] =
+    useState([]);
 
+  const [routes, setRoutes] =
+    useState({});
+
+  const [hospitalLoading, setHospitalLoading] =
+    useState(true);
+
+  const [hospitalError, setHospitalError] =
+    useState("");
 
   // ===================================================
-  // GET REAL USER LOCATION
+  // GET HOSPITALS FROM BACKEND
   // ===================================================
 
   useEffect(() => {
+    let cancelled = false;
 
+    async function loadHospitals() {
+      try {
+        setHospitalLoading(true);
+        setHospitalError("");
+
+        const response = await fetch(
+          `${API_URL}/api/hospitals`
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            "Hospital API request failed"
+          );
+        }
+
+        const data = await response.json();
+
+        if (
+          !cancelled &&
+          data.success &&
+          Array.isArray(data.hospitals)
+        ) {
+          setHospitals(data.hospitals);
+        }
+      } catch (error) {
+        console.error(
+          "Hospital loading error:",
+          error
+        );
+
+        if (!cancelled) {
+          setHospitalError(
+            "Unable to load live hospital data."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setHospitalLoading(false);
+        }
+      }
+    }
+
+    loadHospitals();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+
+  // ===================================================
+  // GET USER LOCATION
+  // ===================================================
+
+  useEffect(() => {
     if (!navigator.geolocation) {
+      setUserLocation(CHENNAI_FALLBACK);
 
       setLocationStatus(
         "Location unavailable — showing Chennai network"
       );
 
-      setUserLocation({
-        lat: 13.0827,
-        lon: 80.2707,
-      });
-
       return;
     }
 
-
     navigator.geolocation.getCurrentPosition(
-
       (position) => {
-
-        const location = {
+        setUserLocation({
           lat: position.coords.latitude,
           lon: position.coords.longitude,
-        };
-
-        setUserLocation(location);
+        });
 
         setLocationStatus(
           "Using your current location"
@@ -189,13 +187,7 @@ function LiveMap() {
       },
 
       () => {
-
-        // Chennai fallback
-
-        setUserLocation({
-          lat: 13.0827,
-          lon: 80.2707,
-        });
+        setUserLocation(CHENNAI_FALLBACK);
 
         setLocationStatus(
           "Location permission unavailable — showing Chennai"
@@ -207,25 +199,21 @@ function LiveMap() {
         timeout: 10000,
         maximumAge: 30000,
       }
-
     );
-
   }, []);
 
 
   // ===================================================
-  // FIND NEAREST HOSPITALS
+  // CALCULATE NEAREST HOSPITALS
   // ===================================================
 
   const nearestHospitals = useMemo(() => {
-
     if (!userLocation) {
       return hospitals;
     }
 
     return hospitals
       .map((hospital) => ({
-
         ...hospital,
 
         distance: calculateDistance(
@@ -234,34 +222,35 @@ function LiveMap() {
           hospital.lat,
           hospital.lon
         ),
-
       }))
-      .sort((a, b) => a.distance - b.distance);
-
-  }, [userLocation]);
+      .sort(
+        (a, b) => a.distance - b.distance
+      );
+  }, [userLocation, hospitals]);
 
 
   // ===================================================
-  // GET REAL ROAD ROUTES FROM OSRM
+  // LOAD ROAD ROUTES
   // ===================================================
 
   useEffect(() => {
-
-    if (!userLocation) return;
+    if (
+      !userLocation ||
+      nearestHospitals.length === 0
+    ) {
+      return;
+    }
 
     const selectedHospitals =
       nearestHospitals.slice(0, 3);
 
+    let cancelled = false;
 
     async function loadRoutes() {
-
       const newRoutes = {};
 
-
       for (const hospital of selectedHospitals) {
-
         try {
-
           const url =
             `https://router.project-osrm.org/route/v1/driving/` +
             `${userLocation.lon},${userLocation.lat};` +
@@ -280,35 +269,35 @@ function LiveMap() {
             data.routes &&
             data.routes.length > 0
           ) {
-
-            const route = data.routes[0];
+            const route =
+              data.routes[0];
 
             newRoutes[hospital.id] =
               route.geometry.coordinates.map(
-                ([lon, lat]) => [lat, lon]
+                ([lon, lat]) => [
+                  lat,
+                  lon,
+                ]
               );
-
           }
-
         } catch (error) {
-
           console.error(
             "Route error:",
             error
           );
-
         }
-
       }
 
-
-      setRoutes(newRoutes);
-
+      if (!cancelled) {
+        setRoutes(newRoutes);
+      }
     }
-
 
     loadRoutes();
 
+    return () => {
+      cancelled = true;
+    };
   }, [userLocation, nearestHospitals]);
 
 
@@ -317,21 +306,21 @@ function LiveMap() {
   // ===================================================
 
   if (!userLocation) {
-
     return (
-
-      <div className="map-loading">
-
+      <div
+        className="map-loading"
+        style={{
+          minHeight: "520px",
+          width: "100%",
+        }}
+      >
         <div className="map-loading-spinner"></div>
 
         <span>
           {locationStatus}
         </span>
-
       </div>
-
     );
-
   }
 
 
@@ -345,13 +334,31 @@ function LiveMap() {
       lon: userLocation.lon,
     },
 
-    ...nearestHospitals,
+    ...nearestHospitals.map(
+      (hospital) => ({
+        lat: hospital.lat,
+        lon: hospital.lon,
+      })
+    ),
   ];
 
 
-  return (
+  // ===================================================
+  // MAP
+  // ===================================================
 
-    <div className="live-map-wrapper">
+  return (
+    <div
+      className="live-map-wrapper"
+      style={{
+        position: "relative",
+        width: "100%",
+        minHeight: "560px",
+        height: "560px",
+        borderRadius: "18px",
+        overflow: "hidden",
+      }}
+    >
 
       <MapContainer
         center={[
@@ -361,12 +368,17 @@ function LiveMap() {
         zoom={12}
         scrollWheelZoom={true}
         className="live-leaflet-map"
+        style={{
+          width: "100%",
+          height: "100%",
+          minHeight: "560px",
+        }}
       >
 
         {/* OPENSTREETMAP */}
 
         <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
+          attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
@@ -378,9 +390,9 @@ function LiveMap() {
         />
 
 
-        {/* ==========================================
+        {/* =================================================
             USER LOCATION
-        ========================================== */}
+        ================================================= */}
 
         <CircleMarker
           center={[
@@ -395,25 +407,25 @@ function LiveMap() {
             weight: 3,
           }}
         >
-
           <Popup>
+            <div className="hospital-popup">
 
-            <strong>
-              Your Location
-            </strong>
+              <strong>
+                Your Location
+              </strong>
 
-            <br />
+              <span>
+                {locationStatus}
+              </span>
 
-            {locationStatus}
-
+            </div>
           </Popup>
-
         </CircleMarker>
 
 
-        {/* ==========================================
+        {/* =================================================
             HOSPITAL MARKERS
-        ========================================== */}
+        ================================================= */}
 
         {nearestHospitals.map(
           (hospital, index) => (
@@ -454,36 +466,44 @@ function LiveMap() {
 
                   <span>
                     Distance:{" "}
-                    {hospital.distance?.toFixed(2)}
-                    {" "}km
+                    {hospital.distance
+                      ?.toFixed(2)}{" "}
+                    km
                   </span>
 
                   <span>
-                    ICU beds: {hospital.icu}
+                    ICU beds:{" "}
+                    {hospital.icu_free ?? 0}
                   </span>
 
                   <span>
-                    Emergency beds:{" "}
-                    {hospital.emergencyBeds}
+                    Free beds:{" "}
+                    {hospital.beds_free ?? 0}
                   </span>
 
                   <span>
                     Ventilators:{" "}
-                    {hospital.ventilators}
+                    {hospital.ventilator_free ?? 0}
                   </span>
 
                   <span>
                     Ambulances:{" "}
-                    {hospital.ambulances}
+                    {hospital.ambulances_free ?? 0}
                   </span>
 
                   <span>
                     ER wait:{" "}
-                    {hospital.wait} min
+                    {hospital.er_wait_min ?? 0} min
+                  </span>
+
+                  <span>
+                    Oxygen:{" "}
+                    {hospital.oxygen_pct ?? 0}%
                   </span>
 
                   <b>
-                    {hospital.status}
+                    {hospital.status ||
+                      "Status unavailable"}
                   </b>
 
                 </div>
@@ -491,14 +511,13 @@ function LiveMap() {
               </Popup>
 
             </CircleMarker>
-
           )
         )}
 
 
-        {/* ==========================================
-            REAL ROAD ROUTES
-        ========================================== */}
+        {/* =================================================
+            ROAD ROUTES
+        ================================================= */}
 
         {nearestHospitals
           .slice(0, 3)
@@ -507,12 +526,15 @@ function LiveMap() {
             const route =
               routes[hospital.id];
 
-            if (!route) return null;
+            if (!route) {
+              return null;
+            }
 
             return (
-
               <Polyline
-                key={`route-${hospital.id}`}
+                key={
+                  `route-${hospital.id}`
+                }
                 positions={route}
                 pathOptions={{
                   color:
@@ -522,33 +544,35 @@ function LiveMap() {
                   weight:
                     index === 0 ? 5 : 3,
                   opacity:
-                    index === 0 ? 0.9 : 0.6,
+                    index === 0
+                      ? 0.9
+                      : 0.6,
                 }}
               />
-
             );
-
           })}
 
       </MapContainer>
 
 
-      {/* ==========================================
+      {/* =================================================
           MAP STATUS
-      ========================================== */}
+      ================================================= */}
 
       <div className="map-location-status">
 
         <span className="map-status-dot"></span>
 
-        {locationStatus}
+        {hospitalLoading
+          ? "Loading live hospital network..."
+          : locationStatus}
 
       </div>
 
 
-      {/* ==========================================
+      {/* =================================================
           NEAREST HOSPITAL CARD
-      ========================================== */}
+      ================================================= */}
 
       {nearestHospitals.length > 0 && (
 
@@ -563,16 +587,41 @@ function LiveMap() {
           </strong>
 
           <span>
-            {nearestHospitals[0].distance?.toFixed(1)}
-            {" "}km away
+            {nearestHospitals[0].distance
+              ?.toFixed(1)}{" "}
+            km away
           </span>
 
         </div>
 
       )}
 
-    </div>
 
+      {/* =================================================
+          LIVE DATA ERROR
+      ================================================= */}
+
+      {hospitalError && (
+
+        <div
+          style={{
+            position: "absolute",
+            left: "16px",
+            bottom: "16px",
+            zIndex: 1000,
+            padding: "8px 12px",
+            borderRadius: "8px",
+            background:
+              "rgba(20, 20, 25, 0.9)",
+            fontSize: "11px",
+          }}
+        >
+          {hospitalError}
+        </div>
+
+      )}
+
+    </div>
   );
 }
 
